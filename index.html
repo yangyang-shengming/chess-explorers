@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="棋盤探險隊的西洋棋試玩。用六個小任務練送貨、應將和馬叉。">
+  <meta name="theme-color" content="#101e31">
+  <title>棋盤探險隊｜西洋棋闖關</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./game.js"></script>
+</head>
+<body>
+  <main class="site">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-piece" aria-hidden="true">♞</span>
+        <h1>棋盤探險隊</h1>
+      </div>
+      <div class="progress">
+        <div class="progress-copy">
+          <span>通關進度</span>
+          <strong id="progress-text">0 / 6</strong>
+        </div>
+        <div id="progress-bar" class="progress-bar" role="progressbar"
+          aria-label="通關進度" aria-valuemin="0" aria-valuemax="6" aria-valuenow="0"></div>
+      </div>
+    </header>
+
+    <nav class="categories" id="categories" aria-label="選擇任務"></nav>
+
+    <div class="game" id="game" data-category="delivery">
+      <section class="mission" aria-labelledby="puzzle-title">
+        <div class="puzzles" id="puzzles" role="group" aria-label="選擇題號"></div>
+        <h2 id="puzzle-title" tabindex="-1"></h2>
+        <p id="objective" class="objective"></p>
+      </section>
+
+      <section class="board-panel" aria-label="西洋棋棋盤">
+        <div class="board-shell">
+          <div id="ranks" class="ranks" aria-hidden="true"></div>
+          <div id="board" class="board" role="group" aria-label="棋盤，方向鍵可移動焦點"></div>
+          <div id="files" class="files" aria-hidden="true"></div>
+        </div>
+      </section>
+
+      <section class="controls" aria-label="提示和答題回饋">
+        <div class="feedback" id="feedback" data-state="ready" role="status" aria-atomic="true">
+          <strong id="feedback-title">輪到白方</strong>
+          <p id="feedback-text">點白棋，再點要走到的格子。</p>
+        </div>
+        <div class="actions">
+          <button class="action action-hint" id="hint" type="button">提示</button>
+          <button class="action action-retry" id="retry" type="button">重試</button>
+          <button class="action action-next" id="next" type="button" hidden>下一題</button>
+        </div>
+      </section>
+    </div>
+
+    <footer class="footer">
+      <a href="https://github.com/yangyang-shengming/chess-explorers">GitHub 原始碼</a>
+    </footer>
+    <noscript>開啟 JavaScript 後即可在棋盤上走棋。</noscript>
+  </main>
+</body>
+</html>
