@@ -1,5 +1,7 @@
-import { exercises, lessons } from './course.js?v=course-4';
-import { markTargets, matchOutcome, movesTo, startPuzzle, tryMove } from './rules.js?v=course-4';
+import { exercises, lessons } from './course.js?v=class-elo-1';
+import { bindElo } from './elo-ui.js?v=class-elo-1';
+import { readGameLog, specialMove } from './game-log.js?v=class-elo-1';
+import { markTargets, matchOutcome, movesTo, startPuzzle, tryMove } from './rules.js?v=class-elo-1';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('board');
@@ -18,12 +20,22 @@ const ranks = '87654321';
 const pieceNames = { k: '王', q: '皇后', r: '車', b: '主教', n: '馬', p: '兵' };
 const pieceSymbols = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟︎' };
 const progressKey = 'chess-explorers:completed:v1';
+const moveAssistKey = 'chess-explorers:show-legal-moves';
+const moveLabels = { castle: '王車易位', 'en-passant': '吃過路兵', promotion: '兵升變' };
+const moveAssist = byId('show-legal-moves');
 const completed = readProgress();
 
 let exercise;
 let lesson;
 let state;
 let matchSession;
+let listedMoves;
+
+try {
+  moveAssist.checked = localStorage.getItem(moveAssistKey) !== 'off';
+} catch {
+  // The board keeps its default hint setting if preferences cannot be read.
+}
 
 function readProgress() {
   try {
@@ -137,15 +149,29 @@ function makeSession(item) {
     solved: false, hint: false, step: 0, reviewIndex: null, reviewPosition: null,
     targets: item.mark ? markTargets(position, item) : null, marks: new Set(),
     records: item.match ? [{ fen: position.fen() }] : null,
-    outcome: null,
+    outcome: null, archive: null,
+    match: item.match ? { id: crypto.randomUUID(), pair: null } : null,
   };
+}
+
+function reviewRecords() {
+  return state.archive?.records ?? state.records;
+}
+
+function legalDestinations() {
+  if (!exercise.match || !moveAssist.checked || !state.selected || state.pending || state.outcome || state.reviewIndex !== null) {
+    return new Map();
+  }
+  return new Map(state.position.moves({ square: state.selected, verbose: true })
+    .map((move) => [move.to, move.isCapture() || move.isEnPassant()]));
 }
 
 function renderBoard() {
   const position = state.reviewPosition ?? state.position;
-  const played = state.reviewIndex === null ? state.played : state.records[state.reviewIndex].move;
+  const played = state.reviewIndex === null ? state.played : reviewRecords()[state.reviewIndex].move;
   const inCheck = position.inCheck() && (!exercise.choice || state.hint || state.solved);
   const hints = state.hint ? currentStage().hint.squares : [];
+  const legal = legalDestinations();
   for (const [square, { choice, pieceNode, targetNode, markNode }] of squares) {
     const piece = position.get(square);
     const checked = inCheck && piece?.type === 'k' && piece.color === position.turn();
@@ -155,6 +181,7 @@ function renderBoard() {
     if (target) description.push('指定落點');
     if (checked) description.push('被將軍');
     if (marked) description.push('已找到');
+    if (legal.has(square)) description.push(legal.get(square) ? '可以吃子' : '合法落點');
     choice.setAttribute('aria-label', description.join('，'));
     choice.setAttribute('aria-pressed', String(square === state.selected || marked));
     choice.tabIndex = square === state.cursor ? 0 : -1;
@@ -164,6 +191,8 @@ function renderBoard() {
     choice.classList.toggle('is-mistake', square === state.mistake);
     choice.classList.toggle('is-played', Boolean(played && (played.from === square || played.to === square)));
     choice.classList.toggle('is-marked', marked);
+    choice.classList.toggle('is-legal', legal.has(square));
+    choice.classList.toggle('is-legal-capture', legal.get(square) === true);
     pieceNode.dataset.color = piece?.color ?? '';
     pieceNode.textContent = piece ? pieceSymbols[piece.type] : '';
     targetNode.hidden = !target;
@@ -208,7 +237,8 @@ function reportTurn() {
   const white = state.position.turn() === 'w';
   const side = white ? '白方' : '黑方';
   const title = state.position.inCheck() ? side + '被將軍' : '輪到' + side;
-  report('ready', title, white ? '點白棋，再點要走到的格子。' : '點黑棋，再點要走到的格子。');
+  const instruction = white ? '點白棋，再點要走到的格子。' : '點黑棋，再點要走到的格子。';
+  report('ready', title, (exercise.match ? moveNote(state.played) : '') + instruction);
 }
 
 function renderControls() {
@@ -217,11 +247,14 @@ function renderControls() {
   byId('hint').disabled = state.solved;
   byId('retry').textContent = exercise.match ? '重開這局' : '重試';
   byId('retry').hidden = isReview;
+  byId('move-assist').hidden = !exercise.match || isReview || Boolean(state.outcome);
   byId('review').hidden = !exercise.match || isReview;
-  byId('review').disabled = !exercise.match || state.records.length < 3 || Boolean(state.pending);
+  byId('review').disabled = !exercise.match || state.records.length < 2 || Boolean(state.pending);
   byId('review-actions').hidden = !isReview;
   byId('earlier').disabled = !isReview || state.reviewIndex === 0;
-  byId('later').disabled = !isReview || state.reviewIndex === state.records.length - 1;
+  byId('later').disabled = !isReview || state.reviewIndex === reviewRecords().length - 1;
+  byId('replay-panel').hidden = !isReview;
+  if (isReview) renderReviewList();
 
   const nextId = order[order.indexOf(exercise.id) + 1];
   byId('next').hidden = !state.solved || !nextId;
@@ -231,6 +264,15 @@ function renderControls() {
   nextActivity.textContent = lesson.nextActivity?.label ?? '';
 
   for (const choice of byId('choices').children) choice.disabled = state.solved;
+  elo.show({
+    visible: exercise.match === true,
+    match: state.match,
+    ended: Boolean(state.outcome),
+    reviewing: isReview,
+    archived: Boolean(state.archive),
+    hasMoves: Boolean(state.records?.length > 1),
+    promotionPending: Boolean(state.pending),
+  });
 }
 
 function openExercise(id, { focusTitle = false, reset = false } = {}) {
@@ -393,6 +435,54 @@ function playMove(from, to, promotion) {
   renderBoard();
 }
 
+function startMatch(pair) {
+  openExercise(exercise.id, { reset: true });
+  state.match.pair = pair ?? null;
+  elo.clearBoardStatus();
+  renderControls();
+}
+
+async function saveMatch(session) {
+  const { match, outcome, position, records } = session;
+  if (!match || !outcome || match.savedMessage || match.saving) return;
+  match.saving = true;
+  match.saveError = '';
+  match.draft ??= {
+    id: match.id,
+    ...match.pair,
+    rated: Boolean(match.pair),
+    result: outcome.result,
+    playedAt: new Date().toISOString(),
+    source: 'board',
+    pgn: records.length > 1 ? position.pgn({ maxWidth: 74 }) : '',
+  };
+  try {
+    match.savedMessage = await elo.record(match.draft);
+  } catch (error) {
+    match.saveError = error instanceof DOMException ? '這個瀏覽器暫時無法儲存本局。' : error.message;
+  } finally {
+    match.saving = false;
+    if (state === session && exercise.match) renderControls();
+  }
+}
+
+function finalizeMatch(outcome) {
+  state.outcome = outcome;
+  state.selected = null;
+  state.mistake = null;
+  saveMatch(state);
+  reportTurn();
+  renderControls();
+}
+
+function declareMatchResult(result) {
+  if (!exercise.match || state.outcome || state.reviewIndex !== null || state.pending || state.records.length < 2) return;
+  const title = { white: '白方獲勝', draw: '和棋', black: '黑方獲勝' }[result];
+  const text = result === 'draw' ? '雙方同意和棋。' : '對手認輸，這局結束。';
+  finalizeMatch({ result, title, text });
+  renderBoard();
+}
+
 function playMatchMove(from, to, promotion) {
   const move = movesTo(state.position, from, to).find((candidate) => candidate.promotion === promotion);
   if (!move) {
@@ -405,25 +495,65 @@ function playMatchMove(from, to, promotion) {
   state.selected = null;
   state.mistake = null;
   state.records.push({ fen: state.position.fen(), move });
-  state.outcome = matchOutcome(state.position, state.records);
-  reportTurn();
-  renderControls();
+  const outcome = matchOutcome(state.position, state.records);
+  if (outcome) {
+    finalizeMatch(outcome);
+  } else {
+    reportTurn();
+    renderControls();
+  }
 }
 
 function showReview(index) {
-  const record = state.records[index];
+  const records = reviewRecords();
+  const record = records[index];
   if (!record) return;
   state.reviewIndex = index;
   state.reviewPosition = startPuzzle(record);
+  byId('resume').textContent = state.archive ? '返回雙人棋盤' : state.outcome ? '返回本局' : '繼續對弈';
   state.selected = null;
   state.mistake = null;
   const move = record.move;
-  const caption = move
-    ? `${describePiece({ color: move.color, type: move.piece })}從 ${move.from} 走到 ${move.to}。`
+  let caption = move
+    ? `${describePiece({ color: move.color, type: move.piece })}從 ${move.from} 走到 ${move.to}。${moveNote(move)}`
     : '這是這盤棋的起始位置。';
-  report('hint', `復盤 ${index} / ${state.records.length - 1} 手`, caption);
+  const outcome = state.archive ? state.archive.outcome : state.outcome;
+  if (index === records.length - 1 && outcome) caption += outcome.title + '。';
+  report('hint', `復盤 ${index} / ${records.length - 1} 手`, caption);
   renderBoard();
   renderControls();
+}
+
+function moveNote(move) {
+  const label = move && moveLabels[specialMove(move)];
+  return label ? '這一步是' + label + '。' : '';
+}
+
+function renderReviewList() {
+  const records = reviewRecords();
+  const list = byId('review-moves');
+  const game = state.archive?.game;
+  byId('review-context').textContent = game ? `白方 ${game.white}　黑方 ${game.black}` : '本局走法';
+  if (records !== listedMoves || list.children.length !== records.length) {
+    list.replaceChildren(...records.map(({ move }, index) => {
+      const label = move ? move.before.split(' ')[5] + (move.color === 'w' ? '. ' : '… ') + move.san : '起始局面';
+      return button('review-move', label, () => showReview(index));
+    }));
+    listedMoves = records;
+  }
+  for (const [index, choice] of [...list.children].entries()) {
+    choice.setAttribute('aria-current', index === state.reviewIndex ? 'step' : 'false');
+  }
+}
+
+function openSavedGame(game, ply, returnTo) {
+  const { records, outcome } = readGameLog(game.pgn, game.result);
+  state.archive = { game, records, outcome, returnTo };
+  state.pending = null;
+  byId('promotions').hidden = true;
+  showReview(ply);
+  byId('game').scrollIntoView({ block: 'start' });
+  exerciseTitle.focus({ preventScroll: true });
 }
 
 function hashExercise() {
@@ -434,17 +564,42 @@ function hashExercise() {
   return lessons.find((item) => item.number === Number(lessonNumber))?.exercises[0] ?? order[0];
 }
 
+const elo = bindElo({
+  startMatch,
+  startPractice: () => startMatch(),
+  finishMatch: declareMatchResult,
+  openReview: openSavedGame,
+  retrySave: () => {
+    saveMatch(state);
+    renderControls();
+  },
+});
+
 createNavigation();
 createBoard();
 openExercise(hashExercise());
 
+moveAssist.addEventListener('change', () => {
+  try {
+    localStorage.setItem(moveAssistKey, moveAssist.checked ? 'on' : 'off');
+  } catch {
+    // The setting still applies on the current page.
+  }
+  renderBoard();
+});
 byId('hint').addEventListener('click', () => {
   state.hint = true;
   state.mistake = null;
   report('hint', '提示', currentStage().hint.text);
   renderBoard();
 });
-byId('retry').addEventListener('click', () => openExercise(exercise.id, { reset: true }));
+byId('retry').addEventListener('click', () => {
+  if (exercise.match) {
+    startMatch(state.match.pair);
+  } else {
+    openExercise(exercise.id, { reset: true });
+  }
+});
 byId('next').addEventListener('click', () => {
   const next = order[order.indexOf(exercise.id) + 1];
   if (next) openExercise(next, { focusTitle: true });
@@ -459,11 +614,18 @@ byId('review').addEventListener('click', () => {
 byId('earlier').addEventListener('click', () => showReview(state.reviewIndex - 1));
 byId('later').addEventListener('click', () => showReview(state.reviewIndex + 1));
 byId('resume').addEventListener('click', () => {
+  const archive = state.archive;
+  state.archive = null;
   state.reviewIndex = null;
   state.reviewPosition = null;
   reportTurn();
   renderBoard();
   renderControls();
-  byId('review').focus({ preventScroll: true });
+  if (archive) {
+    const trigger = archive.returnTo?.isConnected ? archive.returnTo : byId('elo-open-history');
+    trigger.focus();
+  } else {
+    byId('review').focus({ preventScroll: true });
+  }
 });
 window.addEventListener('hashchange', () => openExercise(hashExercise()));

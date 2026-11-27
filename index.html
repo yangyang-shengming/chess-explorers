@@ -6,8 +6,8 @@
   <meta name="description" content="棋盤探險隊的八堂西洋棋入門課。從送貨、跳馬練到雙人對弈和復盤。">
   <meta name="theme-color" content="#101e31">
   <title>棋盤探險隊｜西洋棋闖關</title>
-  <link rel="stylesheet" href="./styles.css?v=course-4">
-  <script type="module" src="./game.js?v=course-4"></script>
+  <link rel="stylesheet" href="./styles.css?v=class-elo-1">
+  <script type="module" src="./game.js?v=class-elo-1"></script>
 </head>
 <body>
   <main class="site">
@@ -51,6 +51,41 @@
             <div class="puzzles" id="puzzles" role="group" aria-label="選擇題號"></div>
             <h3 id="puzzle-title" tabindex="-1"></h3>
             <p id="objective" class="objective"></p>
+            <div id="elo-play" class="elo-play" hidden>
+              <div id="elo-pair" class="elo-pair" hidden>
+                <div class="elo-side">
+                  <span class="elo-side-label">白方</span>
+                  <strong id="elo-white-name"></strong>
+                  <span class="elo-score" id="elo-white-score"></span>
+                  <small id="elo-white-delta" hidden></small>
+                </div>
+                <div class="elo-side">
+                  <span class="elo-side-label">黑方</span>
+                  <strong id="elo-black-name"></strong>
+                  <span class="elo-score" id="elo-black-score"></span>
+                  <small id="elo-black-delta" hidden></small>
+                </div>
+              </div>
+              <details id="elo-setup" class="elo-details">
+                <summary>班內計分局</summary>
+                <form id="elo-start-form" class="elo-form">
+                  <div class="elo-fields">
+                    <label>白方代號<input name="white" list="elo-player-options" maxlength="36" autocomplete="off" required></label>
+                    <label>黑方代號<input name="black" list="elo-player-options" maxlength="36" autocomplete="off" required></label>
+                  </div>
+                  <div class="actions">
+                    <button class="action action-next" type="submit">開始計分局</button>
+                    <button id="elo-practice" class="action" type="button" hidden>開練習局</button>
+                  </div>
+                </form>
+              </details>
+              <div class="elo-links">
+                <button id="elo-jump" class="text-action" type="button">登記平時對局</button>
+                <button id="elo-open-history" class="text-action" type="button">對局庫</button>
+                <button id="elo-open-milestones" class="text-action" type="button">里程碑</button>
+              </div>
+              <p id="elo-board-status" class="elo-status" role="status"></p>
+            </div>
           </section>
 
           <section class="board-panel" aria-label="西洋棋棋盤">
@@ -68,6 +103,9 @@
               <p id="feedback-text">點白棋，再點要走到的格子。</p>
             </div>
             <div id="promotions" class="choices" role="group" aria-label="選擇升變棋子" hidden></div>
+            <label id="move-assist" class="move-assist" hidden>
+              <input type="checkbox" id="show-legal-moves" checked> 標示合法落點
+            </label>
             <div class="actions">
               <button class="action action-hint" id="hint" type="button">提示</button>
               <button class="action action-retry" id="retry" type="button">重試</button>
@@ -80,8 +118,98 @@
               <button class="action" id="later" type="button">下一步</button>
               <button class="action action-next" id="resume" type="button">繼續對弈</button>
             </div>
+            <section id="replay-panel" class="replay-panel" aria-labelledby="review-context" hidden>
+              <h4 id="review-context"></h4>
+              <div id="review-moves" class="review-moves" role="group" aria-label="跳到指定走法"></div>
+            </section>
+            <details id="elo-finish" class="elo-details" hidden>
+              <summary>登記本局結果</summary>
+              <form id="elo-finish-form" class="elo-form">
+                <div class="elo-fields">
+                  <label>賽果
+                    <select name="result" required>
+                      <option value="">選擇賽果</option>
+                      <option value="white">白勝（黑方認輸）</option>
+                      <option value="draw">和棋（雙方同意）</option>
+                      <option value="black">黑勝（白方認輸）</option>
+                    </select>
+                  </label>
+                  <div class="elo-submit">
+                    <button class="action" type="submit">確認賽果並記分</button>
+                  </div>
+                </div>
+              </form>
+            </details>
+            <button class="action elo-save-retry" id="elo-retry-save" type="button" hidden>重試儲存本局</button>
           </section>
         </div>
+
+        <section id="elo-panel" class="elo-panel" aria-labelledby="elo-title" hidden>
+          <header class="elo-header">
+            <h3 id="elo-title">班內 Elo</h3>
+            <p>未有賽果的選手顯示「未定級」，第一筆賽果從 <strong>200</strong> 分起算。對局資料庫保存在這個瀏覽器。</p>
+          </header>
+          <datalist id="elo-player-options"></datalist>
+          <div class="elo-admin">
+            <section class="elo-card" aria-labelledby="elo-roster-title">
+              <h4 id="elo-roster-title">選手名單</h4>
+              <form id="elo-player-form" class="elo-form">
+                <div class="elo-fields">
+                  <label>選手代號<input name="player" maxlength="36" autocomplete="off" required></label>
+                  <div class="elo-submit"><button class="action" type="submit">新增選手</button></div>
+                </div>
+              </form>
+              <p class="elo-status" id="elo-player-status" role="status"></p>
+              <ul id="elo-roster" class="elo-list"></ul>
+            </section>
+
+            <section class="elo-card" aria-labelledby="elo-manual-title">
+              <h4 id="elo-manual-title" tabindex="-1">登記平時對局</h4>
+              <form id="elo-game-form" class="elo-form">
+                <div class="elo-fields">
+                  <label>白方代號<input name="white" list="elo-player-options" maxlength="36" autocomplete="off" required></label>
+                  <label>黑方代號<input name="black" list="elo-player-options" maxlength="36" autocomplete="off" required></label>
+                  <label class="elo-date">日期時間<input type="datetime-local" name="playedAt" required></label>
+                  <label class="elo-result">賽果
+                    <select name="result" required>
+                      <option value="">選擇賽果</option>
+                      <option value="white">白勝</option>
+                      <option value="draw">和棋</option>
+                      <option value="black">黑勝</option>
+                    </select>
+                  </label>
+                </div>
+                <label>備註（選填）<textarea name="note" rows="2" maxlength="240" placeholder="例如實體課、時限或想復盤的一步"></textarea></label>
+                <label>棋譜 PGN（選填）<textarea name="pgn" rows="3" maxlength="64000" spellcheck="false" placeholder="例如 1. e4 e5 2. Nf3 Nc6"></textarea></label>
+                <div class="actions">
+                  <button id="elo-game-save" class="action action-next" type="submit">儲存對局</button>
+                  <button id="elo-cancel-edit" class="action" type="button" hidden>取消編輯</button>
+                </div>
+              </form>
+              <p class="elo-status" id="elo-game-status" role="status"></p>
+            </section>
+          </div>
+
+          <section class="elo-card elo-history" aria-labelledby="elo-history-title">
+            <h4 id="elo-history-title" tabindex="-1">對局資料庫</h4>
+            <p class="elo-help">補登或更正後，分數會依對局時間重算。</p>
+            <div class="elo-form elo-filter">
+              <label>搜尋選手<input id="elo-game-search" type="search" placeholder="輸入選手代號" maxlength="36"></label>
+            </div>
+            <p class="elo-status" id="elo-history-status" role="status"></p>
+            <ol id="elo-games" class="elo-list"></ol>
+          </section>
+
+          <section class="elo-card elo-history" aria-labelledby="elo-milestones-title">
+            <h4 id="elo-milestones-title" tabindex="-1">成就里程碑</h4>
+            <p class="elo-help">有棋譜的計分局會解鎖成就，每項都能回看第一次發生的走法。</p>
+            <div class="elo-form elo-filter">
+              <label>查看選手<select id="elo-milestone-player"></select></label>
+            </div>
+            <p class="elo-status" id="elo-milestone-status" role="status"></p>
+            <ul id="elo-milestones" class="elo-list elo-milestones"></ul>
+          </section>
+        </section>
       </section>
     </div>
 

@@ -313,8 +313,8 @@ export const exercises = [
   },
   {
     id: '8A',
-    title: '雙人練習棋盤',
-    objective: '兩人輪流走棋。想討論剛才的一步時，打開復盤。',
+    title: '雙人對弈棋盤',
+    objective: '兩人輪流走棋。完成的棋局會存入對局庫，隨時可回看。',
     match: true,
   },
 ];
