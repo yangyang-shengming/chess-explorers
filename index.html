@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="棋盤探險隊的西洋棋試玩。用六個小任務練送貨、應將和馬叉。">
+  <meta name="description" content="棋盤探險隊的八堂西洋棋入門課。從送貨、跳馬練到雙人對弈和復盤。">
   <meta name="theme-color" content="#101e31">
   <title>棋盤探險隊｜西洋棋闖關</title>
   <link rel="stylesheet" href="./styles.css">
@@ -19,39 +19,68 @@
       <div class="progress">
         <div class="progress-copy">
           <span>通關進度</span>
-          <strong id="progress-text">0 / 6</strong>
+          <strong id="progress-text">0</strong>
         </div>
         <div id="progress-bar" class="progress-bar" role="progressbar"
-          aria-label="通關進度" aria-valuemin="0" aria-valuemax="6" aria-valuenow="0"></div>
+          aria-label="通關進度" aria-valuemin="0" aria-valuenow="0"><div id="progress-fill"></div></div>
       </div>
     </header>
 
-    <nav class="categories" id="categories" aria-label="選擇任務"></nav>
-
-    <div class="game" id="game" data-category="delivery">
-      <section class="mission" aria-labelledby="puzzle-title">
-        <div class="puzzles" id="puzzles" role="group" aria-label="選擇題號"></div>
-        <h2 id="puzzle-title" tabindex="-1"></h2>
-        <p id="objective" class="objective"></p>
-      </section>
-
-      <section class="board-panel" aria-label="西洋棋棋盤">
-        <div class="board-shell">
-          <div id="ranks" class="ranks" aria-hidden="true"></div>
-          <div id="board" class="board" role="group" aria-label="棋盤，方向鍵可移動焦點"></div>
-          <div id="files" class="files" aria-hidden="true"></div>
+    <div class="course-layout">
+      <aside class="course-picker">
+        <nav id="lessons" class="lessons" aria-label="八堂西洋棋課"></nav>
+        <div class="mobile-picker">
+          <label for="lesson-select">選課</label>
+          <select id="lesson-select"></select>
         </div>
-      </section>
+      </aside>
 
-      <section class="controls" aria-label="提示和答題回饋">
-        <div class="feedback" id="feedback" data-state="ready" role="status" aria-atomic="true">
-          <strong id="feedback-title">輪到白方</strong>
-          <p id="feedback-text">點白棋，再點要走到的格子。</p>
-        </div>
-        <div class="actions">
-          <button class="action action-hint" id="hint" type="button">提示</button>
-          <button class="action action-retry" id="retry" type="button">重試</button>
-          <button class="action action-next" id="next" type="button" hidden>下一題</button>
+      <section class="course-content" aria-labelledby="lesson-title">
+        <header class="lesson-header">
+          <p class="lesson-topic" id="lesson-topic"></p>
+          <h2 id="lesson-title"></h2>
+          <p class="lesson-intro" id="lesson-intro"></p>
+          <details class="lesson-notes" id="lesson-notes">
+            <summary>課堂玩法</summary>
+            <p id="activity"></p>
+          </details>
+        </header>
+
+        <div class="game" id="game" data-lesson="1">
+          <section class="mission" aria-labelledby="puzzle-title">
+            <div class="puzzles" id="puzzles" role="group" aria-label="選擇題號"></div>
+            <h3 id="puzzle-title" tabindex="-1"></h3>
+            <p id="objective" class="objective"></p>
+          </section>
+
+          <section class="board-panel" aria-label="西洋棋棋盤">
+            <div class="board-shell">
+              <div id="ranks" class="ranks" aria-hidden="true"></div>
+              <div id="board" class="board" role="group" aria-label="棋盤，方向鍵可移動焦點"></div>
+              <div id="files" class="files" aria-hidden="true"></div>
+            </div>
+          </section>
+
+          <section class="controls" aria-label="提示和答題回饋">
+            <div class="choices" id="choices" role="group" aria-label="選擇答案" hidden></div>
+            <div class="feedback" id="feedback" data-state="ready" role="status" aria-atomic="true">
+              <strong id="feedback-title">輪到白方</strong>
+              <p id="feedback-text">點白棋，再點要走到的格子。</p>
+            </div>
+            <div id="promotions" class="choices" role="group" aria-label="選擇升變棋子" hidden></div>
+            <div class="actions">
+              <button class="action action-hint" id="hint" type="button">提示</button>
+              <button class="action action-retry" id="retry" type="button">重試</button>
+              <button class="action action-next" id="next" type="button" hidden>下一題</button>
+              <button class="action" id="review" type="button" hidden>復盤</button>
+              <button class="action" id="next-activity" type="button" hidden></button>
+            </div>
+            <div class="actions review-actions" id="review-actions" aria-label="復盤步驟" hidden>
+              <button class="action" id="earlier" type="button">上一步</button>
+              <button class="action" id="later" type="button">下一步</button>
+              <button class="action action-next" id="resume" type="button">繼續對弈</button>
+            </div>
+          </section>
         </div>
       </section>
     </div>

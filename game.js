@@ -1,110 +1,109 @@
-import { categories, puzzles } from './puzzles.js';
-import { startPuzzle, tryMove } from './rules.js';
+import { exercises, lessons } from './course.js';
+import { markTargets, matchOutcome, movesTo, startPuzzle, tryMove } from './rules.js';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('board');
-const categoryList = byId('categories');
 const puzzleList = byId('puzzles');
-const title = byId('puzzle-title');
-const feedback = byId('feedback');
-const hintButton = byId('hint');
-const nextButton = byId('next');
+const lessonPicker = byId('lesson-select');
+const exerciseTitle = byId('puzzle-title');
+const lessonButtons = new Map();
+const puzzleButtons = new Map();
+const squares = new Map();
+const exerciseById = new Map(exercises.map((item) => [item.id, item]));
+const lessonByExercise = new Map(lessons.flatMap((lesson) => lesson.exercises.map((id) => [id, lesson])));
+const order = lessons.flatMap((lesson) => lesson.exercises);
 
 const files = 'abcdefgh';
 const ranks = '87654321';
-const pieceNames = { k: '王', q: '后', r: '車', b: '象', n: '馬', p: '兵' };
+const pieceNames = { k: '王', q: '皇后', r: '車', b: '主教', n: '馬', p: '兵' };
 const pieceSymbols = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟︎' };
 const progressKey = 'chess-explorers:completed:v1';
 const completed = readProgress();
 
-const squares = new Map();
-const categoryButtons = new Map();
-const puzzleButtons = new Map();
-let puzzle;
-let position;
-let selected;
-let cursor;
-let mistake;
-let hintVisible;
-let played;
+let exercise;
+let lesson;
+let state;
+let matchSession;
 
 function readProgress() {
   try {
     const saved = JSON.parse(localStorage.getItem(progressKey) ?? '[]');
-    return new Set(puzzles.filter((item) => Array.isArray(saved) && saved.includes(item.id)).map((item) => item.id));
+    return new Set(Array.isArray(saved) ? saved.filter((id) => exerciseById.has(id)) : []);
   } catch {
     return new Set();
   }
 }
 
-function rememberProgress() {
+function completeExercise() {
+  completed.add(exercise.id);
   try {
     localStorage.setItem(progressKey, JSON.stringify([...completed]));
   } catch {
-    // The current session still works when browser storage is unavailable.
+    // The current session works even if browser storage is unavailable.
   }
+  renderProgress();
 }
 
-function span(className, text = '') {
-  const element = document.createElement('span');
+function node(tag, className, text = '') {
+  const element = document.createElement(tag);
   element.className = className;
   element.textContent = text;
   return element;
 }
 
-function createButtons() {
-  for (const category of categories) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'category';
-    button.dataset.category = category.id;
-    const icon = span('category-icon', category.icon);
-    icon.setAttribute('aria-hidden', 'true');
-    const count = span('category-count');
-    button.append(icon, span('category-name', category.name), count);
-    button.addEventListener('click', () => {
-      if (puzzle.category === category.id) return;
-      const items = puzzles.filter((item) => item.category === category.id);
-      openPuzzle(items.find((item) => !completed.has(item.id)) ?? items[0]);
-    });
-    categoryList.append(button);
-    categoryButtons.set(category.id, { button, count });
-  }
+function button(className, label, action) {
+  const element = node('button', className, label);
+  element.type = 'button';
+  element.addEventListener('click', action);
+  return element;
+}
 
-  for (const item of puzzles) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'puzzle-choice';
-    button.dataset.puzzle = item.id;
-    const done = span('puzzle-done', '✓');
+function createNavigation() {
+  for (const item of lessons) {
+    const count = node('span', 'lesson-count');
+    const label = node('span', 'lesson-name', item.title);
+    const choice = button('lesson-link', '', () => openLesson(item.number));
+    choice.dataset.lesson = item.number;
+    choice.append(node('span', 'lesson-index', String(item.number)), label, count);
+    byId('lessons').append(choice);
+    lessonButtons.set(item.number, { choice, count });
+
+    const option = node('option', '', `第 ${item.number} 堂　${item.title}`);
+    option.value = item.number;
+    lessonPicker.append(option);
+  }
+  lessonPicker.addEventListener('change', () => openLesson(Number(lessonPicker.value)));
+
+  for (const item of exercises) {
+    const done = node('span', 'puzzle-done', '✓');
     done.setAttribute('aria-hidden', 'true');
-    button.append(span('puzzle-number', item.id), done);
-    button.addEventListener('click', () => openPuzzle(item));
-    puzzleList.append(button);
-    puzzleButtons.set(item.id, { button, done });
+    const choice = button('puzzle-choice', '', () => {
+      if (exercise.id !== item.id) openExercise(item.id);
+    });
+    choice.dataset.puzzle = item.id;
+    choice.append(node('span', 'puzzle-number', item.id), done);
+    puzzleList.append(choice);
+    puzzleButtons.set(item.id, { choice, done });
   }
 }
 
 function createBoard() {
-  for (const file of files) byId('files').append(span('coordinate', file));
-  for (const rank of ranks) byId('ranks').append(span('coordinate', rank));
+  for (const file of files) byId('files').append(node('span', 'coordinate', file));
+  for (const rank of ranks) byId('ranks').append(node('span', 'coordinate', rank));
 
   for (const [row, rank] of [...ranks].entries()) {
     for (const [column, file] of [...files].entries()) {
       const square = file + rank;
-      const button = document.createElement('button');
-      button.className = 'square';
-      button.type = 'button';
-      button.dataset.square = square;
-      button.dataset.tone = (row + column) % 2 === 0 ? 'light' : 'dark';
-      const pieceNode = span('piece');
-      const cargo = span('cargo');
-      pieceNode.setAttribute('aria-hidden', 'true');
-      cargo.setAttribute('aria-hidden', 'true');
-      button.append(pieceNode, cargo);
-      button.addEventListener('click', () => selectSquare(square));
-      board.append(button);
-      squares.set(square, { button, pieceNode, cargo });
+      const choice = button('square', '', () => selectSquare(square));
+      choice.dataset.square = square;
+      choice.dataset.tone = (row + column) % 2 === 0 ? 'light' : 'dark';
+      const pieceNode = node('span', 'piece');
+      const targetNode = node('span', 'cargo');
+      const markNode = node('span', 'square-mark', '✓');
+      for (const item of [pieceNode, targetNode, markNode]) item.setAttribute('aria-hidden', 'true');
+      choice.append(pieceNode, targetNode, markNode);
+      board.append(choice);
+      squares.set(square, { choice, pieceNode, targetNode, markNode });
     }
   }
 
@@ -117,9 +116,9 @@ function createBoard() {
     const fileIndex = files.indexOf(current[0]) + offset[0];
     const rankNumber = Number(current[1]) + offset[1];
     if (fileIndex < 0 || fileIndex > 7 || rankNumber < 1 || rankNumber > 8) return;
-    cursor = files[fileIndex] + rankNumber;
+    state.cursor = files[fileIndex] + rankNumber;
     renderBoard();
-    squares.get(cursor).button.focus({ preventScroll: true });
+    squares.get(state.cursor).choice.focus({ preventScroll: true });
   });
 }
 
@@ -127,133 +126,344 @@ function describePiece(piece) {
   return (piece.color === 'w' ? '白' : '黑') + pieceNames[piece.type];
 }
 
+function currentStage() {
+  return exercise.line?.[state.step] ?? exercise;
+}
+
+function makeSession(item) {
+  const position = startPuzzle(item);
+  return {
+    position, cursor: 'a1', selected: null, mistake: null, played: null, pending: null,
+    solved: false, hint: false, step: 0, reviewIndex: null, reviewPosition: null,
+    targets: item.mark ? markTargets(position, item) : null, marks: new Set(),
+    records: item.match ? [{ fen: position.fen() }] : null,
+    outcome: null,
+  };
+}
+
 function renderBoard() {
-  const inCheck = position.inCheck();
-  for (const [square, { button, pieceNode, cargo }] of squares) {
+  const position = state.reviewPosition ?? state.position;
+  const played = state.reviewIndex === null ? state.played : state.records[state.reviewIndex].move;
+  const inCheck = position.inCheck() && (!exercise.choice || state.hint || state.solved);
+  const hints = state.hint ? currentStage().hint.squares : [];
+  for (const [square, { choice, pieceNode, targetNode, markNode }] of squares) {
     const piece = position.get(square);
     const checked = inCheck && piece?.type === 'k' && piece.color === position.turn();
-    const target = !played && square === puzzle.target;
+    const target = !state.solved && square === exercise.target;
+    const marked = state.marks.has(square);
     const description = [square, piece ? describePiece(piece) : '空格'];
-    if (target) description.push('送貨目標');
+    if (target) description.push('指定落點');
     if (checked) description.push('被將軍');
-    button.setAttribute('aria-label', description.join('，'));
-    button.setAttribute('aria-pressed', String(square === selected));
-    button.tabIndex = square === cursor ? 0 : -1;
-    button.classList.toggle('is-selected', square === selected);
-    button.classList.toggle('is-checked', checked);
-    button.classList.toggle('is-hinted', hintVisible && puzzle.hint.squares.includes(square));
-    button.classList.toggle('is-mistake', square === mistake);
-    button.classList.toggle('is-played', Boolean(played && [played.from, played.to].includes(square)));
+    if (marked) description.push('已找到');
+    choice.setAttribute('aria-label', description.join('，'));
+    choice.setAttribute('aria-pressed', String(square === state.selected || marked));
+    choice.tabIndex = square === state.cursor ? 0 : -1;
+    choice.classList.toggle('is-selected', square === state.selected);
+    choice.classList.toggle('is-checked', checked);
+    choice.classList.toggle('is-hinted', hints.includes(square));
+    choice.classList.toggle('is-mistake', square === state.mistake);
+    choice.classList.toggle('is-played', Boolean(played && (played.from === square || played.to === square)));
+    choice.classList.toggle('is-marked', marked);
     pieceNode.dataset.color = piece?.color ?? '';
     pieceNode.textContent = piece ? pieceSymbols[piece.type] : '';
-    cargo.hidden = !target;
+    targetNode.hidden = !target;
+    markNode.hidden = !marked;
   }
 }
 
 function renderProgress() {
-  byId('progress-text').textContent = `${completed.size} / ${puzzles.length}`;
-  const progressBar = byId('progress-bar');
-  progressBar.setAttribute('aria-valuemax', String(puzzles.length));
-  progressBar.setAttribute('aria-valuenow', String(completed.size));
-  progressBar.replaceChildren(...puzzles.map((item) => span(completed.has(item.id) ? 'segment filled' : 'segment')));
+  byId('progress-text').textContent = `${completed.size} / ${exercises.length}`;
+  const bar = byId('progress-bar');
+  bar.setAttribute('aria-valuemax', String(exercises.length));
+  bar.setAttribute('aria-valuenow', String(completed.size));
+  byId('progress-fill').style.width = `${completed.size / exercises.length * 100}%`;
 
-  for (const category of categories) {
-    const items = puzzles.filter((item) => item.category === category.id);
-    const { button, count } = categoryButtons.get(category.id);
-    count.textContent = `${items.filter((item) => completed.has(item.id)).length}/${items.length}`;
-    button.setAttribute('aria-pressed', String(category.id === puzzle.category));
+  for (const item of lessons) {
+    const { choice, count } = lessonButtons.get(item.number);
+    const done = item.exercises.filter((id) => completed.has(id)).length;
+    count.textContent = `${done}/${item.exercises.length}`;
+    choice.setAttribute('aria-current', item.number === lesson.number ? 'step' : 'false');
   }
 
-  for (const item of puzzles) {
-    const { button, done } = puzzleButtons.get(item.id);
-    button.hidden = item.category !== puzzle.category;
-    button.setAttribute('aria-current', String(item.id === puzzle.id));
-    button.setAttribute('aria-label', `題目 ${item.id} ${item.title}${completed.has(item.id) ? '，已通關' : ''}`);
+  for (const item of exercises) {
+    const { choice, done } = puzzleButtons.get(item.id);
+    choice.hidden = !lesson.exercises.includes(item.id);
+    choice.setAttribute('aria-current', String(item.id === exercise.id));
+    choice.setAttribute('aria-label', `題目 ${item.id} ${item.title}${completed.has(item.id) ? '，已通關' : ''}`);
     done.hidden = !completed.has(item.id);
   }
 }
 
-function report(state, heading, message) {
-  feedback.dataset.state = state;
+function report(kind, heading, message) {
+  byId('feedback').dataset.state = kind;
   byId('feedback-title').textContent = heading;
   byId('feedback-text').textContent = message;
 }
 
-function openPuzzle(item, focusTitle = false) {
-  puzzle = item;
-  position = startPuzzle(puzzle);
-  selected = null;
-  cursor = 'a1';
-  mistake = null;
-  hintVisible = false;
-  played = null;
+function reportTurn() {
+  if (state.outcome) {
+    report('success', state.outcome.title, state.outcome.text);
+    return;
+  }
+  const white = state.position.turn() === 'w';
+  const side = white ? '白方' : '黑方';
+  const title = state.position.inCheck() ? side + '被將軍' : '輪到' + side;
+  report('ready', title, white ? '點白棋，再點要走到的格子。' : '點黑棋，再點要走到的格子。');
+}
 
-  byId('game').dataset.category = puzzle.category;
-  title.textContent = puzzle.title;
-  byId('objective').textContent = puzzle.objective;
-  hintButton.disabled = false;
-  nextButton.hidden = true;
-  report('ready', '輪到白方', '點白棋，再點要走到的格子。');
-  if (location.hash !== '#' + puzzle.id) history.replaceState(null, '', '#' + puzzle.id);
+function renderControls() {
+  const isReview = state.reviewIndex !== null;
+  byId('hint').hidden = exercise.match === true;
+  byId('hint').disabled = state.solved;
+  byId('retry').textContent = exercise.match ? '重開這局' : '重試';
+  byId('retry').hidden = isReview;
+  byId('review').hidden = !exercise.match || isReview;
+  byId('review').disabled = !exercise.match || state.records.length < 3 || Boolean(state.pending);
+  byId('review-actions').hidden = !isReview;
+  byId('earlier').disabled = !isReview || state.reviewIndex === 0;
+  byId('later').disabled = !isReview || state.reviewIndex === state.records.length - 1;
+
+  const nextId = order[order.indexOf(exercise.id) + 1];
+  byId('next').hidden = !state.solved || !nextId;
+  byId('next').textContent = lesson.exercises.includes(nextId) ? '下一題' : '下一堂';
+  const nextActivity = byId('next-activity');
+  nextActivity.hidden = !lesson.nextActivity;
+  nextActivity.textContent = lesson.nextActivity?.label ?? '';
+
+  for (const choice of byId('choices').children) choice.disabled = state.solved;
+}
+
+function openExercise(id, { focusTitle = false, reset = false } = {}) {
+  const previousLesson = lesson;
+  exercise = exerciseById.get(id);
+  lesson = lessonByExercise.get(id);
+  state = (exercise.match && matchSession && !reset) ? matchSession : makeSession(exercise);
+  if (exercise.match) matchSession = state;
+
+  if (previousLesson !== lesson) byId('lesson-notes').open = false;
+  lessonPicker.value = lesson.number;
+  byId('game').dataset.lesson = lesson.number;
+  byId('lesson-topic').textContent = `第 ${lesson.number} 堂　${lesson.topic}`;
+  byId('lesson-title').textContent = lesson.title;
+  byId('lesson-intro').textContent = lesson.intro;
+  byId('activity').textContent = lesson.activity;
+  exerciseTitle.textContent = exercise.title;
+  byId('objective').textContent = currentStage().objective ?? exercise.objective;
+
+  const choices = byId('choices');
+  choices.hidden = !exercise.choice;
+  choices.replaceChildren(...(exercise.choice?.options ?? []).map(({ value, label }) =>
+    button('action', label, () => answerChoice(value))
+  ));
+  byId('promotions').hidden = true;
+  state.pending = null;
+
+  if (exercise.mark) {
+    report('ready', `找到 ${state.marks.size} / ${state.targets.size} 格`, '直接點棋盤上的格子。');
+  } else if (exercise.choice) {
+    report('ready', '這個局面怎麼判斷', '觀察棋盤，再選一個答案。');
+  } else if (state.reviewIndex !== null) {
+    showReview(state.reviewIndex);
+  } else {
+    reportTurn();
+  }
+  if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
   renderBoard();
   renderProgress();
-  if (focusTitle) title.focus({ preventScroll: true });
+  renderControls();
+  if (focusTitle) exerciseTitle.focus({ preventScroll: true });
+}
+
+function openLesson(number) {
+  if (lesson?.number === number) return;
+  const selectedLesson = lessons.find((item) => item.number === number);
+  if (!selectedLesson) return;
+  const id = selectedLesson.exercises.find((item) => !completed.has(item)) ?? selectedLesson.exercises[0];
+  openExercise(id);
+}
+
+function finish(text) {
+  state.solved = true;
+  state.hint = false;
+  state.mistake = null;
+  state.selected = null;
+  completeExercise();
+  report('success', completed.size === exercises.length ? '全部通關' : '通關成功', text);
+  renderControls();
+}
+
+function answerChoice(value) {
+  if (state.solved) return;
+  if (value === exercise.choice.correct) finish(exercise.success);
+  else report('incomplete', '再看一次棋盤', exercise.incomplete);
+  renderBoard();
+}
+
+function findSquare(square) {
+  if (state.marks.has(square)) return;
+  if (state.targets.has(square)) {
+    state.marks.add(square);
+    state.mistake = null;
+    if (state.marks.size === state.targets.size) finish(exercise.success);
+    else report('ready', `找到 ${state.marks.size} / ${state.targets.size} 格`, '再找下一格。');
+  } else {
+    state.mistake = square;
+    report('incomplete', '再看這個格子', exercise.incomplete);
+  }
 }
 
 function selectSquare(square) {
-  cursor = square;
-  if (played) {
+  state.cursor = square;
+  if (state.solved || state.pending || state.outcome || state.reviewIndex !== null || exercise.choice) {
     renderBoard();
     return;
   }
-  const piece = position.get(square);
-  if (piece?.color === position.turn()) {
-    selected = square;
-    mistake = null;
+  if (exercise.mark) {
+    findSquare(square);
+    renderBoard();
+    return;
+  }
+  const piece = state.position.get(square);
+  const sameSide = piece?.color === state.position.turn();
+  const feedbackKey = state.selected + square;
+  if (state.selected && (!sameSide || currentStage().feedback?.[feedbackKey])) {
+    chooseMove(state.selected, square);
+  } else if (sameSide) {
+    state.selected = square;
+    state.mistake = null;
     report('ready', '已選' + describePiece(piece), '點出棋子要走到的格子。');
-  } else if (selected) {
-    const result = tryMove(position, puzzle, selected, square);
-    if (result.state === 'success') {
-      played = { from: selected, to: square };
-      selected = null;
-      mistake = null;
-      hintVisible = false;
-      completed.add(puzzle.id);
-      rememberProgress();
-      renderProgress();
-      hintButton.disabled = true;
-      nextButton.hidden = completed.size === puzzles.length;
-    } else {
-      mistake = square;
-    }
-    const heading = nextButton.hidden && result.state === 'success' ? '全部通關' : result.title;
-    report(result.state, heading, result.text);
   } else {
-    report('ready', '先選一枚白棋', '再點這枚棋要走到的格子。');
+    report('ready', '先選一枚輪到的棋子', '再點它要走到的格子。');
   }
   renderBoard();
 }
 
-function currentLinkPuzzle() {
-  return puzzles.find((item) => '#' + item.id === location.hash.toUpperCase()) ?? puzzles[0];
+function chooseMove(from, to) {
+  const candidates = movesTo(state.position, from, to);
+  if (!candidates.some((move) => move.promotion)) {
+    playMove(from, to);
+    return;
+  }
+  state.pending = { from, to };
+  const menu = byId('promotions');
+  const buttons = ['q', 'r', 'b', 'n'].map((piece) => button('action', pieceNames[piece], () => {
+    const pending = state.pending;
+    state.pending = null;
+    menu.hidden = true;
+    playMove(pending.from, pending.to, piece);
+    squares.get(pending.to).choice.focus({ preventScroll: true });
+  }));
+  buttons.push(button('action', '取消', () => {
+    state.pending = null;
+    menu.hidden = true;
+    reportTurn();
+    renderControls();
+    squares.get(state.cursor).choice.focus({ preventScroll: true });
+  }));
+  menu.replaceChildren(...buttons);
+  menu.hidden = false;
+  report('hint', '選擇升變', '兵到達底排，選一枚棋子替換它。');
+  renderControls();
+  buttons[0].focus({ preventScroll: true });
 }
 
-createButtons();
-createBoard();
-openPuzzle(currentLinkPuzzle());
+function playMove(from, to, promotion) {
+  if (exercise.match) {
+    playMatchMove(from, to, promotion);
+  } else {
+    const stage = currentStage();
+    const result = tryMove(state.position, stage, from, to, promotion);
+    if (result.state === 'success' && stage.reply) {
+      state.position.move(stage.reply);
+      state.played = stage.reply;
+      state.step += 1;
+      state.selected = null;
+      state.mistake = null;
+      state.hint = false;
+      byId('objective').textContent = currentStage().objective;
+      report('hint', '接著走第二步', result.text);
+    } else if (result.state === 'success') {
+      state.played = { from, to };
+      finish(result.text);
+    } else {
+      state.mistake = to;
+      report(result.state, result.title, result.text);
+    }
+  }
+  renderBoard();
+}
 
-hintButton.addEventListener('click', () => {
-  hintVisible = true;
-  mistake = null;
-  report('hint', '提示', puzzle.hint.text);
+function playMatchMove(from, to, promotion) {
+  const move = movesTo(state.position, from, to).find((candidate) => candidate.promotion === promotion);
+  if (!move) {
+    state.mistake = to;
+    report('illegal', '這一步走不了', '檢查棋子的走法、路上的棋子和王的安全。');
+    return;
+  }
+  state.position.move(move);
+  state.played = move;
+  state.selected = null;
+  state.mistake = null;
+  state.records.push({ fen: state.position.fen(), move });
+  state.outcome = matchOutcome(state.position, state.records);
+  reportTurn();
+  renderControls();
+}
+
+function showReview(index) {
+  const record = state.records[index];
+  if (!record) return;
+  state.reviewIndex = index;
+  state.reviewPosition = startPuzzle(record);
+  state.selected = null;
+  state.mistake = null;
+  const move = record.move;
+  const caption = move
+    ? `${describePiece({ color: move.color, type: move.piece })}從 ${move.from} 走到 ${move.to}。`
+    : '這是這盤棋的起始位置。';
+  report('hint', `復盤 ${index} / ${state.records.length - 1} 手`, caption);
+  renderBoard();
+  renderControls();
+}
+
+function hashExercise() {
+  const raw = location.hash.slice(1);
+  const id = raw.toUpperCase();
+  if (exerciseById.has(id)) return id;
+  const lessonNumber = /^lesson-(\d+)$/.exec(raw)?.[1];
+  return lessons.find((item) => item.number === Number(lessonNumber))?.exercises[0] ?? order[0];
+}
+
+createNavigation();
+createBoard();
+openExercise(hashExercise());
+
+byId('hint').addEventListener('click', () => {
+  state.hint = true;
+  state.mistake = null;
+  report('hint', '提示', currentStage().hint.text);
   renderBoard();
 });
-
-byId('retry').addEventListener('click', () => openPuzzle(puzzle));
-nextButton.addEventListener('click', () => {
-  const index = puzzles.indexOf(puzzle);
-  const order = [...puzzles.slice(index + 1), ...puzzles.slice(0, index)];
-  const next = order.find((item) => !completed.has(item.id));
-  if (next) openPuzzle(next, true);
+byId('retry').addEventListener('click', () => openExercise(exercise.id, { reset: true }));
+byId('next').addEventListener('click', () => {
+  const next = order[order.indexOf(exercise.id) + 1];
+  if (next) openExercise(next, { focusTitle: true });
 });
-window.addEventListener('hashchange', () => openPuzzle(currentLinkPuzzle()));
+byId('next-activity').addEventListener('click', () => openExercise(lesson.nextActivity.id, { focusTitle: true }));
+
+byId('review').addEventListener('click', () => {
+  completeExercise();
+  showReview(state.records.length - 2);
+  byId('resume').focus({ preventScroll: true });
+});
+byId('earlier').addEventListener('click', () => showReview(state.reviewIndex - 1));
+byId('later').addEventListener('click', () => showReview(state.reviewIndex + 1));
+byId('resume').addEventListener('click', () => {
+  state.reviewIndex = null;
+  state.reviewPosition = null;
+  reportTurn();
+  renderBoard();
+  renderControls();
+  byId('review').focus({ preventScroll: true });
+});
+window.addEventListener('hashchange', () => openExercise(hashExercise()));

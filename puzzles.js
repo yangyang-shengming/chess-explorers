@@ -25,16 +25,16 @@ export const puzzles = [
   {
     id: '1B',
     category: 'delivery',
-    title: '象的斜線捷徑',
-    objective: '黑兵擋住車的路。從白車和白象選一枚，把它送到金色標記 e4。',
+    title: '主教的斜線捷徑',
+    objective: '黑兵擋住車的路。從白車和白主教選一枚，把它送到金色標記 e4。',
     fen: '7k/8/8/8/8/8/4p3/KB2R3 w - - 0 1',
     target: 'e4',
     solution: { from: 'b1', to: 'e4' },
     hint: {
-      text: '從 b1 的白象出發，沿著 c2、d3 找到 e4。',
+      text: '從 b1 的白主教出發，沿著 c2、d3 找到 e4。',
       squares: ['b1', 'c2', 'd3', 'e4'],
     },
-    success: '送到了。白象沿斜線走到 e4，避開擋路的黑兵。',
+    success: '送到了。白主教沿斜線走到 e4，避開擋路的黑兵。',
     incomplete: '這一步可以走。試著用一枚棋直接到 e4。',
     feedback: {
       e1e4: 'e2 的黑兵擋住了車。找一枚能沿斜線到 e4 的棋。',
@@ -48,10 +48,10 @@ export const puzzles = [
     fen: '4r2k/8/8/8/8/8/4K3/2B5 w - - 0 1',
     solution: { from: 'c1', to: 'e3' },
     hint: {
-      text: '黑車沿 e 欄將軍。白象能走到哪一格擋線？',
+      text: '黑車沿 e 欄將軍。白主教能走到哪一格擋線？',
       squares: ['e8', 'e7', 'e6', 'e5', 'e4', 'e3', 'e2'],
     },
-    success: '白象擋住黑車，王解圍了。',
+    success: '白主教擋住黑車，王解圍了。',
     incomplete: '王已經安全了。再試用棋子擋住黑車的路線。',
     feedback: {
       e2e1: 'e1 還在黑車的攻擊線上。試試用棋子擋線。',
@@ -72,7 +72,7 @@ export const puzzles = [
     success: '白車吃掉了將軍的棋子，白王安全了。',
     incomplete: '王移到了安全格。這次試試直接吃掉黑車。',
     feedback: {
-      e1e2: '黑象守著 e2，白王走過去會受攻擊。換一枚白棋試試。',
+      e1e2: '黑主教守著 e2，白王走過去會受攻擊。換一枚白棋試試。',
     },
   },
   {
