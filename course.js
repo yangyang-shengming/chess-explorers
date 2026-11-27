@@ -1,4 +1,4 @@
-import { puzzles } from './puzzles.js';
+import { puzzles } from './puzzles.js?v=course-4';
 
 const original = Object.fromEntries(puzzles.map((puzzle) => [puzzle.id, puzzle]));
 

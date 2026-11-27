@@ -1,5 +1,5 @@
-import { exercises, lessons } from './course.js';
-import { markTargets, matchOutcome, movesTo, startPuzzle, tryMove } from './rules.js';
+import { exercises, lessons } from './course.js?v=course-4';
+import { markTargets, matchOutcome, movesTo, startPuzzle, tryMove } from './rules.js?v=course-4';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('board');
